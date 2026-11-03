@@ -29,11 +29,6 @@
   --cr-text-secondary: #9aa0a6;
   --cr-text-muted: #5f6368;
   
-  --cr-kbd-bg: #1e1f23;
-  --cr-kbd-border: #3c4048;
-  --cr-kbd-text: #e8eaed;
-  --cr-kbd-plus: #5f6368;
-  
   --cr-btn-disabled-bg: #282a2f;
   --cr-btn-disabled-border: #35383f;
   --cr-btn-disabled-text: #5f6368;
@@ -78,11 +73,6 @@
     --cr-text-primary: #202124;
     --cr-text-secondary: #5f6368;
     --cr-text-muted: #80868b;
-    
-    --cr-kbd-bg: #ffffff;
-    --cr-kbd-border: #dadce0;
-    --cr-kbd-text: #3c4043;
-    --cr-kbd-plus: #80868b;
     
     --cr-btn-disabled-bg: #f1f3f4;
     --cr-btn-disabled-border: #e8eaed;
@@ -205,15 +195,16 @@ html, body {
   box-shadow: 0 0 6px rgba(251, 188, 4, 0.5);
 }
 
-/* ── 2. Status Banner & Shortcut Card ── */
+/* ── 2. Status Banner (Compact & Centered) ── */
 .status-card {
   background-color: var(--cr-card-bg);
   border: 1px solid var(--cr-card-border);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
@@ -239,6 +230,8 @@ html, body {
 .status-title-row {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 
 .status-text {
@@ -246,43 +239,7 @@ html, body {
   font-weight: 600;
   color: var(--cr-text-primary);
   line-height: 1.25;
-}
-
-.shortcut-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.shortcut-label {
-  font-size: 11px;
-  color: var(--cr-text-secondary);
-  font-weight: 400;
-}
-
-.shortcut-keys {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.shortcut-plus {
-  color: var(--cr-kbd-plus);
-  font-size: 10px;
-  font-weight: 500;
-}
-
-kbd {
-  display: inline-block;
-  background-color: var(--cr-kbd-bg);
-  border: 1px solid var(--cr-kbd-border);
-  border-radius: 4px;
-  color: var(--cr-kbd-text);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1.5px 5px;
-  line-height: 1.3;
+  text-align: center;
 }
 
 /* ── 3. API Key & Provider Section ── */
@@ -426,7 +383,7 @@ kbd {
   transform: scale(0.97);
 }
 
-/* ── 4. Action Buttons ── */
+/* ── 4. Action Buttons (No emojis, sleek native styling) ── */
 .action-buttons-row {
   display: flex;
   gap: 8px;
@@ -439,10 +396,10 @@ kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: -0.1px;
   border: none;
   outline: none;
   transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease;
@@ -454,10 +411,6 @@ kbd {
   border: 1px solid var(--cr-btn-disabled-border);
   cursor: not-allowed;
   box-shadow: none;
-}
-
-.btn-action:disabled .btn-icon {
-  opacity: 0.5;
 }
 
 /* Primary Button: Solve Form Now */
@@ -492,11 +445,6 @@ kbd {
 
 .btn-solve-code:not(:disabled):active {
   transform: scale(0.98);
-}
-
-.btn-icon {
-  font-size: 12px;
-  line-height: 1;
 }
 
 /* ── 5. Statistics Section ── */
@@ -570,6 +518,7 @@ kbd {
   animation: cr-spin 0.75s linear infinite;
   display: inline-block;
   vertical-align: middle;
+  margin-right: 5px;
 }
 
 @keyframes cr-spin {
@@ -578,7 +527,7 @@ kbd {
   }
 }
 
-/* ── Toast Notification (Responsive, Word-Break, Professional) ── */
+/* ── Toast Notification ── */
 .toast {
   position: fixed;
   bottom: 10px;

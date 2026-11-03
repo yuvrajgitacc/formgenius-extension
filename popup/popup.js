@@ -144,7 +144,7 @@ async function init() {
       chrome.tabs.sendMessage(tab.id, { action: 'DETECT_QUESTIONS' }, (res) => {
         if (chrome.runtime.lastError || !res) return;
         if (res.hasPendingSolution) {
-          statusText.textContent = 'Code ready in memory! (Alt+Shift+S to inject)';
+          statusText.textContent = 'Code ready in memory! Click editor to inject';
         } else if (res.count > 0) {
           const detail = res.alreadyAnswered > 0 ? ` (${res.count} left, ${res.alreadyAnswered} solved)` : ` (${res.count} question${res.count > 1 ? 's' : ''})`;
           if (res.isGoogleForm || tab.url.includes('docs.google.com/forms') || tab.url.includes('forms.gle')) {
@@ -241,8 +241,8 @@ solveBtn.addEventListener('click', async () => {
 
     if (response && response.success) {
       if (response.mode === 'solution_ready') {
-        showToast('💡 Code ready! Click editor & press Alt+Shift+S', 'success');
-        statusText.textContent = 'Code ready in memory! (Alt+Shift+S to inject)';
+        showToast('Code ready! Click editor to inject', 'success');
+        statusText.textContent = 'Code ready in memory! Click editor to inject';
       } else if (response.mode === 'code_injected') {
         showToast('🚀 Code injected into editor!', 'success');
         statusText.textContent = 'Code injected successfully!';
@@ -266,7 +266,7 @@ solveBtn.addEventListener('click', async () => {
     showToast('❌ Could not connect to form. Reload the page.', 'error');
   } finally {
     solveBtn.disabled = false; if (solveCodeBtn) solveCodeBtn.disabled = false;
-    solveBtn.innerHTML = `<span class="btn-icon">⚡</span><span>Solve Form Now</span>`;
+    solveBtn.innerHTML = `<span>Solve Form Now</span>`;
   }
 });
 
@@ -328,8 +328,8 @@ if (solveCodeBtn) {
           showToast('🚀 Code injected into editor!', 'success');
           statusText.textContent = 'Code injected successfully!';
         } else {
-          showToast('💡 Code ready in memory! Click inside editor and press Alt+Shift+C', 'success');
-          statusText.textContent = 'Code ready in memory! (Alt+Shift+C to type)';
+          showToast('Code ready in memory! Click editor to type', 'success');
+          statusText.textContent = 'Code ready in memory! Click editor to type';
         }
 
         const data = await chrome.storage.sync.get(['solvedForms', 'totalQuestions']);
@@ -345,7 +345,7 @@ if (solveCodeBtn) {
       showToast('❌ Please refresh (F5) the test tab first!', 'error');
     } finally {
       solveCodeBtn.disabled = false;
-      solveCodeBtn.innerHTML = `<span class="btn-icon">💻</span><span>Solve Code</span>`;
+      solveCodeBtn.innerHTML = `<span>Solve Code</span>`;
     }
   });
 }
