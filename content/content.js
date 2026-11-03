@@ -1300,24 +1300,30 @@ OUTPUT FORMAT:
     }
 
     const result = [];
+    const seen = new Set();
     for (let i = 0; i < batchQuestions.length; i++) {
       const q = batchQuestions[i];
-      const ansObj = answerArray.find(a => a && (a.batchIndex === i || a.originalIndex === q.index || a.index === q.index || a.index === i)) ||
-                     answerArray[i];
-
-      if (ansObj) {
-        const val = (ansObj && typeof ansObj === 'object' && ansObj.answer !== undefined)
-          ? ansObj.answer
-          : (typeof ansObj === 'string' ? ansObj : null);
-
-        if (val !== null && val !== undefined) {
-          result.push({
-            index: q.index,
-            type: q.type,
-            answer: val
-          });
+      const ansObj = answerArray.find(a => a && typeof a === 'object' &&
+        (Number(a.batchIndex) === i || Number(a.originalIndex) === q.index || Number(a.index) === q.index));
+      if (!ansObj || ansObj.answer === undefined || seen.has(i)) {
+        throw new Error(`AI response missing a uniquely indexed answer for question ${i + 1}; nothing from this batch was filled.`);
+      }
+      seen.add(i);
+      const val = ansObj.answer;
+      if ((q.type === 'multiple_choice' || q.type === 'dropdown') &&
+          !q.options.some(opt => isOptionMatch(opt, val, q.options.indexOf(opt), q.options.length))) {
+        throw new Error(`AI answer for question ${i + 1} does not match any listed option; nothing from this batch was filled.`);
+      }
+      if (q.type === 'checkbox') {
+        const values = Array.isArray(val) ? val : [val];
+        if (values.length === 0 || values.some(v => !q.options.some(opt => isOptionMatch(opt, v, q.options.indexOf(opt), q.options.length)))) {
+          throw new Error(`AI checkbox answer for question ${i + 1} contains an invalid option; nothing from this batch was filled.`);
         }
       }
+      if ((typeof val === 'string' && !val.trim()) || val === null) {
+        throw new Error(`AI returned an empty answer for question ${i + 1}; nothing from this batch was filled.`);
+      }
+      result.push({ index: q.index, type: q.type, answer: val });
     }
 
     return result;
@@ -1551,8 +1557,8 @@ RULES:
 
       if (toSolve.length > 0) {
         try {
-          // Smart batching (8 questions/batch) with 800ms cooldown to never breach TPM/RPM limits
-          const BATCH_SIZE = 8;
+          // One question per request prevents response ordering/index drift across a batch.
+          const BATCH_SIZE = 1;
           let totalFilled = 0;
 
           for (let i = 0; i < toSolve.length; i += BATCH_SIZE) {
