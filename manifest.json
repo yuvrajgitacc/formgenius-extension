@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "FormGenius — AI Form Solver",
-  "version": "1.0.0",
+  "name": "FormGenius \u2014 AI Form Solver",
+  "version": "1.2.0",
   "description": "Solve Google Forms instantly using AI. Press Alt+Shift+S to auto-fill answers.",
   "permissions": [
+    "tabs",
     "activeTab",
     "storage",
     "scripting"
@@ -11,7 +12,11 @@
   "host_permissions": [
     "https://docs.google.com/*",
     "https://generativelanguage.googleapis.com/*",
-    "<all_urls>"
+    "<all_urls>",
+    "https://api.groq.com/*",
+    "https://api.x.ai/*",
+    "https://api.openai.com/*",
+    "https://openrouter.ai/*"
   ],
   "background": {
     "service_worker": "background/service_worker.js",
@@ -20,7 +25,6 @@
   "content_scripts": [
     {
       "matches": [
-        "https://docs.google.com/forms/*",
         "<all_urls>"
       ],
       "js": [
@@ -30,7 +34,8 @@
         "content/content.css"
       ],
       "run_at": "document_idle",
-      "all_frames": false
+      "all_frames": true,
+      "match_about_blank": true
     }
   ],
   "action": {
@@ -40,7 +45,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "FormGenius — AI Form Solver"
+    "default_title": "FormGenius \u2014 AI Form Solver"
   },
   "icons": {
     "16": "icons/icon16.png",
@@ -53,7 +58,14 @@
         "default": "Alt+Shift+S",
         "mac": "Alt+Shift+S"
       },
-      "description": "Activate AI to solve the current Google Form"
+      "description": "Auto-solve Google Form or Aptitude MCQ"
+    },
+    "solve-code": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Auto-solve technical problem and type code in editor"
     }
   }
 }
