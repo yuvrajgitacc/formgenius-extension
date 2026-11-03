@@ -33,11 +33,8 @@ async function handleUniversalAICall(options) {
   }
 }
 
-// ── Google Gemini API (Dynamic Discovery + Dual Key Auth + No Deprecated Models) ──
-let cachedGeminiModelSW = null;
-
-async function getBestGeminiModelSW(cleanKey) {
-  // Never use a stale cache — always re-discover to avoid dead model errors
+// ── Google Gemini API (Dynamic Discovery + Any Key Support + Thinking Fallback) ──
+async function getAvailableGeminiModels(cleanKey) {
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`, {
       method: 'GET',
@@ -49,62 +46,41 @@ async function getBestGeminiModelSW(cleanKey) {
 
     if (res.ok) {
       const data = await res.json();
-      const models = (data?.models || [])
+      const list = (data?.models || [])
         .filter(m => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-        .map(m => (m.name || '').replace(/^models\//, ''));
+        .map(m => (m.name || '').replace(/^models\//, ''))
+        .filter(m => !m.includes('image') && !m.includes('tts') && !m.includes('audio') && !m.includes('robotics') && !m.includes('banana'));
 
-      // ONLY current active models - no decommissioned or retired models
-      const preferred = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-2.5-flash-lite',
-        'gemini-2.5-pro'
-      ];
+      if (list.length > 0) {
+        const candidates = [
+          list.find(id => id === 'gemini-3.5-flash-lite'),
+          list.find(id => id === 'gemini-3.1-flash-lite'),
+          list.find(id => id === 'gemini-3.5-flash'),
+          list.find(id => id === 'gemini-3.8-flash'),
+          list.find(id => id === 'gemini-flash-latest'),
+          list.find(id => id === 'gemini-flash-lite-latest'),
+          list.find(id => id.includes('3.5-flash')),
+          list.find(id => id.includes('3.1-flash')),
+          list.find(id => id.includes('flash') && !id.includes('1.5') && !id.includes('8b') && !id.includes('2.0')),
+          ...list
+        ].filter(Boolean);
 
-      for (const p of preferred) {
-        if (models.includes(p)) {
-          cachedGeminiModelSW = p;
-          return p;
-        }
-      }
-
-      const flash = models.find(m => m.includes('flash') && !m.includes('8b') && !m.includes('1.5'));
-      if (flash) {
-        cachedGeminiModelSW = flash;
-        return flash;
-      }
-    } else {
-      const errData = await res.json().catch(() => ({}));
-      const msg = errData?.error?.message;
-      if (msg && (msg.includes('API key not valid') || msg.includes('PERMISSION_DENIED') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Quota exceeded'))) {
-        throw new Error(`Gemini: ${msg}`);
+        return Array.from(new Set(candidates));
       }
     }
-  } catch (err) {
-    if (err.message && err.message.startsWith('Gemini:')) throw err;
-  }
+  } catch (_) {}
 
-  return 'gemini-2.5-flash';
+  return ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
 }
 
 async function callGeminiUniversal(apiKey, prompt, isJson = false) {
   const cleanKey = String(apiKey || '').replace(/["'`\s]/g, '').trim();
   if (!cleanKey) throw new Error('Gemini: API key is empty');
 
-  const dynamicModel = await getBestGeminiModelSW(cleanKey);
-
-  // Strictly active production models only
-  const candidateModels = [
-    dynamicModel,
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro'
-  ].filter((v, i, a) => v && a.indexOf(v) === i);
-
+  const models = await getAvailableGeminiModels(cleanKey);
   let lastError = null;
 
-  for (const model of candidateModels) {
+  for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const payload = {
@@ -157,15 +133,15 @@ async function callGeminiUniversal(apiKey, prompt, isJson = false) {
           if (errMsg.includes('API key not valid') || errMsg.includes('PERMISSION_DENIED') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded')) {
             throw lastError;
           }
-          // Clear bad cached model so next call re-discovers
-          if (cachedGeminiModelSW === model) cachedGeminiModelSW = null;
-          break; // Try next model
+          break;
         }
 
         const data = await response.json();
-        const text = (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        // Support both standard parts and thinking models (parts with thoughts)
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const textPart = parts.find(p => p.text && !p.thought) || parts.find(p => p.text) || parts[0];
+        const text = (textPart?.text || '').trim();
         if (!text) throw new Error(`Empty response from Gemini (${model})`);
-        cachedGeminiModelSW = model;
         return text;
       } catch (err) {
         lastError = err;
@@ -179,11 +155,8 @@ async function callGeminiUniversal(apiKey, prompt, isJson = false) {
   throw lastError || new Error('Gemini API request failed. Please check your key at aistudio.google.com');
 }
 
-// ── Groq API (Dynamic Model Discovery + Fallbacks) ──
-let cachedGroqModelSW = null;
-
-async function getBestGroqModelSW(apiKey) {
-  if (cachedGroqModelSW) return cachedGroqModelSW;
+// ── Groq API (Dynamic Model Discovery + Any Tier Support) ──
+async function getAvailableGroqModels(apiKey) {
   try {
     const res = await fetch('https://api.groq.com/openai/v1/models', {
       headers: {
@@ -193,37 +166,33 @@ async function getBestGroqModelSW(apiKey) {
     });
     if (res.ok) {
       const data = await res.json();
-      const list = (data.data || []).map(m => m.id);
-      
-      // ONLY active production models - NO decommissioned gemma or mixtral
-      if (list.includes('llama-3.3-70b-versatile')) {
-        cachedGroqModelSW = 'llama-3.3-70b-versatile';
-        return 'llama-3.3-70b-versatile';
-      }
-      if (list.includes('llama-3.1-8b-instant')) {
-        cachedGroqModelSW = 'llama-3.1-8b-instant';
-        return 'llama-3.1-8b-instant';
-      }
-      const textModel = list.find(id => id.startsWith('llama-3') && !id.includes('guard'));
-      if (textModel) {
-        cachedGroqModelSW = textModel;
-        return textModel;
+      const list = (data.data || []).map(m => m.id).filter(id => 
+        !id.includes('whisper') && !id.includes('guard') && !id.includes('safeguard') && !id.includes('orpheus')
+      );
+
+      if (list.length > 0) {
+        const candidates = [
+          list.find(id => id.includes('qwen3.8')),
+          list.find(id => id.includes('gpt-oss-20b')),
+          list.find(id => id.includes('llama-3.3-70b')),
+          list.find(id => id.includes('llama-3.1-8b')),
+          list.find(id => id.includes('gpt-oss-120b')),
+          list.find(id => id.includes('qwen')),
+          list.find(id => id.includes('llama')),
+          ...list
+        ].filter(Boolean);
+
+        return Array.from(new Set(candidates));
       }
     }
   } catch (_) {}
-  return 'llama-3.3-70b-versatile';
+
+  return ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
 }
 
 async function callGroqAPI(apiKey, prompt, isJson = false) {
   const cleanKey = String(apiKey || '').trim();
-  const dynamicModel = await getBestGroqModelSW(apiKey);
-
-  // ONLY verified active Groq production models - no gemma, no mixtral, no llama3-8b-8192
-  const models = [
-    dynamicModel,
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant'
-  ].filter((v, i, a) => v && a.indexOf(v) === i);
+  const models = await getAvailableGroqModels(cleanKey);
 
   let lastError = null;
 
@@ -236,13 +205,13 @@ async function callGroqAPI(apiKey, prompt, isJson = false) {
             {
               role: 'system',
               content: isJson
-                ? 'You are an expert exam solver. You MUST output ONLY valid JSON matching the exact requested format. Do NOT wrap in markdown fences. No explanations outside JSON.'
-                : 'You are an elite competitive programmer. Output ONLY pure, valid code with no markdown fences and no explanations.'
+                ? 'You are an expert exam solver. Output ONLY valid JSON matching the exact schema. No markdown fences. No explanations outside JSON.'
+                : 'You are an elite competitive programmer. Output ONLY pure executable code with no markdown fences and no explanations.'
             },
             { role: 'user', content: prompt }
           ],
           temperature: 0.1,
-          max_tokens: isJson ? 2048 : 1500
+          max_tokens: isJson ? 350 : 1500
         };
 
         if (isJson) {
@@ -263,7 +232,7 @@ async function callGroqAPI(apiKey, prompt, isJson = false) {
             await new Promise(r => setTimeout(r, 2000));
             continue;
           }
-          throw new Error(`Groq (${model}): Rate limit reached (TPM/RPM exceeded). Please wait a few seconds before continuing.`);
+          throw new Error(`Groq (${model}): Rate limit reached (TPM/RPM exceeded). Please wait a few seconds before trying again.`);
         }
 
         if (!response.ok) {
@@ -275,7 +244,7 @@ async function callGroqAPI(apiKey, prompt, isJson = false) {
           }
 
           lastError = new Error(`Groq (${model}): ${errMsg}`);
-          break; // Surface the real error from Groq immediately, don't mask it
+          break; // Model not suitable, try next model from discovered list
         }
 
         const data = await response.json();
@@ -283,18 +252,17 @@ async function callGroqAPI(apiKey, prompt, isJson = false) {
         if (!text) {
           throw new Error(`Empty response from Groq (${model})`);
         }
-        cachedGroqModelSW = model;
         return text;
       } catch (err) {
         lastError = err;
-        if (err.message && (err.message.includes('Invalid') || err.message.includes('Rate limit'))) {
+        if (err.message && (err.message.includes('Invalid or expired') || err.message.includes('Rate limit reached'))) {
           throw err;
         }
       }
     }
   }
 
-  throw lastError || new Error('Groq request failed. Please verify your API key at console.groq.com');
+  throw lastError || new Error('Groq request failed. Please check your key at console.groq.com');
 }
 
 // ── xAI Grok API (Dynamic Model Discovery + Fallbacks) ──
@@ -314,8 +282,7 @@ async function getBestGrokModelSW(apiKey) {
       const list = (data.data || []).map(m => m.id);
       const textModels = list.filter(id => !id.includes('image') && !id.includes('stt') && !id.includes('video'));
       const preferred =
-        textModels.find(id => id.includes('grok-4')) ||
-        textModels.find(id => id.includes('grok-2-latest')) ||
+              textModels.find(id => id.includes('grok-2-latest')) ||
         textModels.find(id => id.includes('grok-2')) ||
         textModels.find(id => id.includes('grok-beta')) ||
         textModels[0];
@@ -334,8 +301,6 @@ async function callGrokAPI(apiKey, prompt, isJson = false) {
 
   const candidateModels = [
     dynamicModel,
-    'grok-4.7',
-    'grok-4.6',
     'grok-2-latest',
     'grok-2',
     'grok-beta'

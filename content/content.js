@@ -304,10 +304,7 @@
   }
 
   // ── Gemini Direct (Dynamic Discovery + Dual Key Auth + No Deprecated Models) ──
-  let cachedGeminiModelDirect = null;
-
-  async function getBestGeminiModelDirect(cleanKey) {
-    // Never trust a stale cache — always re-discover to avoid dead model errors
+  async function getAvailableGeminiModelsDirect(cleanKey) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`, {
         method: 'GET',
@@ -318,36 +315,40 @@
       });
       if (res.ok) {
         const data = await res.json();
-        const models = (data?.models || [])
+        const list = (data?.models || [])
           .filter(m => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map(m => (m.name || '').replace(/^models\//, ''));
-        const preferred = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'];
-        for (const p of preferred) {
-          if (models.includes(p)) { cachedGeminiModelDirect = p; return p; }
+          .map(m => (m.name || '').replace(/^models\//, ''))
+          .filter(m => !m.includes('image') && !m.includes('tts') && !m.includes('audio') && !m.includes('robotics') && !m.includes('banana'));
+
+        if (list.length > 0) {
+          const candidates = [
+            list.find(id => id === 'gemini-3.5-flash-lite'),
+            list.find(id => id === 'gemini-3.1-flash-lite'),
+            list.find(id => id === 'gemini-3.5-flash'),
+            list.find(id => id === 'gemini-3.8-flash'),
+            list.find(id => id === 'gemini-flash-latest'),
+            list.find(id => id === 'gemini-flash-lite-latest'),
+            list.find(id => id.includes('3.5-flash')),
+            list.find(id => id.includes('3.1-flash')),
+            list.find(id => id.includes('flash') && !id.includes('1.5') && !id.includes('8b') && !id.includes('2.0')),
+            ...list
+          ].filter(Boolean);
+
+          return Array.from(new Set(candidates));
         }
-        const flash = models.find(m => m.includes('flash') && !m.includes('8b') && !m.includes('1.5'));
-        if (flash) { cachedGeminiModelDirect = flash; return flash; }
       }
     } catch (_) {}
-    return 'gemini-2.5-flash';
+    return ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
   }
 
   async function callGeminiDirect(apiKey, prompt, isJson = false) {
     const cleanKey = String(apiKey || '').replace(/["'`\s]/g, '').trim();
     if (!cleanKey) throw new Error('Gemini: API key is empty');
 
-    const dynamicModel = await getBestGeminiModelDirect(cleanKey);
-    const candidateModels = [
-      dynamicModel,
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-2.5-flash-lite',
-      'gemini-2.5-pro'
-    ].filter((v, i, a) => v && a.indexOf(v) === i);
-
+    const models = await getAvailableGeminiModelsDirect(cleanKey);
     let lastError = null;
 
-    for (const model of candidateModels) {
+    for (const model of models) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const payload = {
@@ -400,15 +401,14 @@
             if (errMsg.includes('API key not valid') || errMsg.includes('PERMISSION_DENIED') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded')) {
               throw lastError;
             }
-            // Clear stale cached model so next call re-discovers
-            if (cachedGeminiModelDirect === model) cachedGeminiModelDirect = null;
             break;
           }
 
           const data = await response.json();
-          const text = (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          const parts = data?.candidates?.[0]?.content?.parts || [];
+          const textPart = parts.find(p => p.text && !p.thought) || parts.find(p => p.text) || parts[0];
+          const text = (textPart?.text || '').trim();
           if (!text) throw new Error(`Empty response from Gemini (${model})`);
-          cachedGeminiModelDirect = model;
           return text;
         } catch (err) {
           lastError = err;
@@ -423,10 +423,7 @@
   }
 
   // ── Groq Direct (Dynamic Model Discovery + Fallbacks) ──
-  let cachedGroqModelDirect = null;
-
-  async function getBestGroqModelDirect(apiKey) {
-    if (cachedGroqModelDirect) return cachedGroqModelDirect;
+  async function getAvailableGroqModelsDirect(apiKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/models', {
         headers: {
@@ -436,35 +433,33 @@
       });
       if (res.ok) {
         const data = await res.json();
-        const list = (data.data || []).map(m => m.id);
-        if (list.includes('llama-3.3-70b-versatile')) {
-          cachedGroqModelDirect = 'llama-3.3-70b-versatile';
-          return 'llama-3.3-70b-versatile';
-        }
-        if (list.includes('llama-3.1-8b-instant')) {
-          cachedGroqModelDirect = 'llama-3.1-8b-instant';
-          return 'llama-3.1-8b-instant';
-        }
-        const textModel = list.find(id => id.startsWith('llama-3') && !id.includes('guard'));
-        if (textModel) {
-          cachedGroqModelDirect = textModel;
-          return textModel;
+        const list = (data.data || []).map(m => m.id).filter(id => 
+          !id.includes('whisper') && !id.includes('guard') && !id.includes('safeguard') && !id.includes('orpheus')
+        );
+
+        if (list.length > 0) {
+          const candidates = [
+            list.find(id => id.includes('qwen3.8')),
+            list.find(id => id.includes('gpt-oss-20b')),
+            list.find(id => id.includes('llama-3.3-70b')),
+            list.find(id => id.includes('llama-3.1-8b')),
+            list.find(id => id.includes('gpt-oss-120b')),
+            list.find(id => id.includes('qwen')),
+            list.find(id => id.includes('llama')),
+            ...list
+          ].filter(Boolean);
+
+          return Array.from(new Set(candidates));
         }
       }
     } catch (_) {}
-    return 'llama-3.3-70b-versatile';
+
+    return ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
   }
 
   async function callGroqDirect(apiKey, prompt, isJson = false) {
     const cleanKey = String(apiKey || '').trim();
-    const dynamicModel = await getBestGroqModelDirect(apiKey);
-
-    // ONLY verified active Groq production models - no gemma, no mixtral, no llama3-8b-8192
-    const models = [
-      dynamicModel,
-      'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant'
-    ].filter((v, i, a) => v && a.indexOf(v) === i);
+    const models = await getAvailableGroqModelsDirect(cleanKey);
 
     let lastError = null;
 
@@ -483,7 +478,7 @@
               { role: 'user', content: prompt }
             ],
             temperature: 0.1,
-            max_tokens: isJson ? 2048 : 2048
+            max_tokens: isJson ? 350 : 1500
           };
 
           if (isJson) {
@@ -520,7 +515,6 @@
           const data = await response.json();
           const text = (data?.choices?.[0]?.message?.content || '').trim();
           if (!text) throw new Error(`Empty response from Groq (${model})`);
-          cachedGroqModelDirect = model;
           return text;
         } catch (err) {
           lastError = err;
@@ -549,8 +543,7 @@
         const list = (data.data || []).map(m => m.id);
         const textModels = list.filter(id => !id.includes('image') && !id.includes('stt') && !id.includes('video'));
         const preferred =
-          textModels.find(id => id.includes('grok-4')) ||
-          textModels.find(id => id.includes('grok-2-latest')) ||
+                    textModels.find(id => id.includes('grok-2-latest')) ||
           textModels.find(id => id.includes('grok-2')) ||
           textModels.find(id => id.includes('grok-beta')) ||
           textModels[0];
@@ -567,8 +560,6 @@
     const dynamicModel = await getBestGrokModelDirect(apiKey);
     const candidateModels = [
       dynamicModel,
-      'grok-4.7',
-      'grok-4.6',
       'grok-2-latest',
       'grok-2',
       'grok-beta'
