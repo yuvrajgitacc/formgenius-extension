@@ -1,3 +1,5 @@
+// popup.js — FormGenius Extension Popup Logic v1.2.0
+
 function detectProviderFromKey(key) {
   const clean = String(key || '').replace(/["'`\s]/g, '').trim();
   if (clean.startsWith('gsk_')) return 'groq';
@@ -18,28 +20,7 @@ function getFriendlyProviderName(key, provider) {
   return 'Google Gemini';
 }
 
-// popup.js — FormGenius Extension Popup Logic v1.2.0
-
 const apiKeyInput = document.getElementById('apiKey');
-const providerSelect = document.getElementById('providerSelect');
-
-apiKeyInput.addEventListener('input', () => {
-  const val = apiKeyInput.value.trim();
-  if (providerSelect) {
-    if (val.startsWith('gsk_')) {
-      providerSelect.value = 'groq';
-    } else if (val.startsWith('xai-') || val.startsWith('xai_')) {
-      providerSelect.value = 'grok';
-    } else if (val.startsWith('sk-or-')) {
-      providerSelect.value = 'openai';
-    } else if (val.startsWith('sk-')) {
-      providerSelect.value = 'openai';
-    } else if (val.startsWith('AIza') || val.startsWith('AQ')) {
-      providerSelect.value = 'gemini';
-    }
-  }
-});
-
 const toggleKeyBtn = document.getElementById('toggleKey');
 const solveBtn = document.getElementById('solveBtn');
 const solveCodeBtn = document.getElementById('solveCodeBtn');
@@ -49,6 +30,38 @@ const statusBanner = document.getElementById('statusBanner');
 const statusText = document.getElementById('statusText');
 const solvedCount = document.getElementById('solvedCount');
 const questionsCount = document.getElementById('questionsCount');
+const apiKeyLabel = document.getElementById('apiKeyLabel');
+const getKeyLink = document.getElementById('getKeyLink');
+
+function updateKeyLabelAndLink(val) {
+  if (!apiKeyLabel || !getKeyLink) return;
+  const clean = String(val || '').trim();
+  if (clean.startsWith('gsk_')) {
+    apiKeyLabel.textContent = 'Groq API Key';
+    getKeyLink.textContent = 'Get key ↗';
+    getKeyLink.href = 'https://console.groq.com/keys';
+  } else if (clean.startsWith('xai-') || clean.startsWith('xai_')) {
+    apiKeyLabel.textContent = 'xAI Grok Key';
+    getKeyLink.textContent = 'Get key ↗';
+    getKeyLink.href = 'https://console.x.ai';
+  } else if (clean.startsWith('sk-or-')) {
+    apiKeyLabel.textContent = 'OpenRouter Key';
+    getKeyLink.textContent = 'Get key ↗';
+    getKeyLink.href = 'https://openrouter.ai/keys';
+  } else if (clean.startsWith('sk-')) {
+    apiKeyLabel.textContent = 'OpenAI Key';
+    getKeyLink.textContent = 'Get key ↗';
+    getKeyLink.href = 'https://platform.openai.com/api-keys';
+  } else {
+    apiKeyLabel.textContent = 'Gemini API Key';
+    getKeyLink.textContent = 'Get key ↗';
+    getKeyLink.href = 'https://aistudio.google.com/app/apikey';
+  }
+}
+
+apiKeyInput.addEventListener('input', () => {
+  updateKeyLabelAndLink(apiKeyInput.value);
+});
 
 // ── Toast Notification ──
 function showToast(message, type = 'info') {
@@ -62,7 +75,7 @@ function showToast(message, type = 'info') {
   toast.textContent = message;
   toast.className = `toast ${type}`;
   requestAnimationFrame(() => toast.classList.add('show'));
-  setTimeout(() => toast.classList.remove('show'), 3000);
+  setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
 // ── Safe Active Tab Finder ──
@@ -85,9 +98,7 @@ async function init() {
 
   if (data.apiKey) {
     apiKeyInput.value = data.apiKey;
-  }
-  if (data.aiProvider && providerSelect) {
-    providerSelect.value = data.aiProvider;
+    updateKeyLabelAndLink(data.apiKey);
   }
 
   solvedCount.textContent = data.solvedForms || 0;
@@ -99,24 +110,24 @@ async function init() {
 
     if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:') || tab.url.startsWith('edge://')) {
       statusDot.className = 'status-dot inactive';
-      statusBanner.className = 'status-card status-banner';
-      statusText.textContent = 'Open a Form or Test to solve';
+      statusBanner.className = 'status-card';
+      statusText.textContent = 'No Google Form active';
       solveBtn.disabled = true; if (solveCodeBtn) solveCodeBtn.disabled = true;
       return;
     }
 
-    // Active web page (Google Form or Test/Exam Portal like Between, etc.)
+    // Active web page
     statusDot.className = 'status-dot active';
-    statusBanner.className = 'status-card status-banner detected';
+    statusBanner.className = 'status-card detected';
     solveBtn.disabled = false; if (solveCodeBtn) solveCodeBtn.disabled = false;
 
-    if (tab.url.includes('docs.google.com/forms')) {
+    if (tab.url.includes('docs.google.com/forms') || tab.url.includes('forms.gle')) {
       statusText.textContent = 'Google Form detected! Ready to solve.';
     } else {
       statusText.textContent = 'Portal detected! Ready to solve.';
     }
 
-    // Query content script for live detection
+    // Query content script for live question detection
     try {
       chrome.tabs.sendMessage(tab.id, { action: 'DETECT_QUESTIONS' }, (res) => {
         if (chrome.runtime.lastError || !res) return;
@@ -136,8 +147,9 @@ async function init() {
     } catch (_) {}
 
   } catch (e) {
-    statusText.textContent = 'AI Form Solver Ready';
-    solveBtn.disabled = false; if (solveCodeBtn) solveCodeBtn.disabled = false;
+    statusText.textContent = 'No Google Form active';
+    statusDot.className = 'status-dot inactive';
+    solveBtn.disabled = true; if (solveCodeBtn) solveCodeBtn.disabled = true;
   }
 }
 
@@ -160,18 +172,11 @@ saveBtn.addEventListener('click', async () => {
     return;
   }
   const detected = detectProviderFromKey(key);
-  const provider = detected || (providerSelect ? providerSelect.value : 'auto');
-  if (providerSelect && detected) providerSelect.value = detected;
+  const provider = detected || 'auto';
   await chrome.storage.sync.set({ apiKey: key, aiProvider: provider });
   const name = getFriendlyProviderName(key, provider);
   showToast(`✅ Key saved! Active: ${name}`, 'success');
 });
-
-if (providerSelect) {
-  providerSelect.addEventListener('change', async () => {
-    await chrome.storage.sync.set({ aiProvider: providerSelect.value });
-  });
-}
 
 // ── Solve Form Button ──
 solveBtn.addEventListener('click', async () => {
@@ -182,9 +187,7 @@ solveBtn.addEventListener('click', async () => {
   }
 
   const detected = detectProviderFromKey(key);
-  const provider = detected || (providerSelect ? providerSelect.value : 'auto');
-  if (providerSelect && detected) providerSelect.value = detected;
-  // Save both sanitized key and detected provider
+  const provider = detected || 'auto';
   await chrome.storage.sync.set({ apiKey: key, aiProvider: provider });
 
   solveBtn.disabled = true; if (solveCodeBtn) solveCodeBtn.disabled = true;
@@ -255,76 +258,6 @@ chrome.runtime.onMessage.addListener((msg) => {
     }
   }
 });
-
-
-// ── Solve Code Button (Technical Coding Solver) ──
-if (solveCodeBtn) {
-  solveCodeBtn.addEventListener('click', async () => {
-    const key = apiKeyInput.value.trim();
-    if (!key) {
-      showToast('❌ Please enter & save your API key first', 'error');
-      return;
-    }
-
-    await chrome.storage.sync.set({ apiKey: key });
-
-    solveCodeBtn.disabled = true;
-    solveCodeBtn.innerHTML = `<span class="spinner"></span><span>Writing...</span>`;
-
-    try {
-      const tab = await getActiveTab();
-      if (!tab || !tab.id) {
-        showToast('❌ No active tab found', 'error');
-        return;
-      }
-
-      // Auto-inject if needed
-      try {
-        await chrome.tabs.sendMessage(tab.id, { action: 'PING' });
-      } catch (_) {
-        try {
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id, allFrames: true },
-            files: ['content/content.js']
-          });
-        } catch (_) {}
-      }
-
-      const data = await chrome.storage.sync.get(['aiProvider']);
-      const provider = data.aiProvider || (providerSelect ? providerSelect.value : 'auto');
-
-      const response = await chrome.tabs.sendMessage(tab.id, {
-        action: 'SOLVE_CODE',
-        apiKey: key,
-        provider: provider
-      });
-
-      if (response && response.success) {
-        if (response.mode === 'code_injected') {
-          showToast('🚀 Code injected into editor!', 'success');
-          statusText.textContent = 'Code injected successfully!';
-        } else {
-          showToast('💡 Code ready in memory! Click inside editor and press Alt+Shift+C', 'success');
-          statusText.textContent = 'Code ready in memory! (Alt+Shift+C to type)';
-        }
-
-        const data = await chrome.storage.sync.get(['solvedForms', 'totalQuestions']);
-        const newForms = (data.solvedForms || 0) + 1;
-        const newQuestions = (data.totalQuestions || 0) + 1;
-        await chrome.storage.sync.set({ solvedForms: newForms, totalQuestions: newQuestions });
-        solvedCount.textContent = newForms;
-        questionsCount.textContent = newQuestions;
-      } else {
-        showToast(`❌ ${response?.error || 'Could not solve code'}`, 'error');
-      }
-    } catch (err) {
-      showToast('❌ Please refresh (F5) the test tab first!', 'error');
-    } finally {
-      solveCodeBtn.disabled = false;
-      solveCodeBtn.innerHTML = `<span class="btn-icon">💻</span><span>Solve Code</span>`;
-    }
-  });
-}
 
 // ── Initialize ──
 init();
