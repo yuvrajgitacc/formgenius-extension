@@ -41,10 +41,6 @@
   --cr-code-hover: #0c8046;
   --cr-code-text: #ffffff;
   
-  --cr-logo-bg: #282a2f;
-  --cr-logo-border: #35383f;
-  --cr-logo-color: #e8eaed;
-  
   --cr-divider: #35383f;
   --cr-link: #8ab4f8;
   --cr-link-hover: #aecbfa;
@@ -89,10 +85,6 @@
     --cr-code-bg: #1e8e3e;
     --cr-code-hover: #188038;
     --cr-code-text: #ffffff;
-    
-    --cr-logo-bg: #f1f3f4;
-    --cr-logo-border: #dadce0;
-    --cr-logo-color: #5f6368;
     
     --cr-divider: #e8eaed;
     --cr-link: #1a73e8;
@@ -146,24 +138,21 @@ html, body {
 }
 
 .logo-icon-box {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background-color: var(--cr-logo-bg);
-  border: 1px solid var(--cr-logo-border);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #1a73e8;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: none;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 1px 4px rgba(26, 115, 232, 0.25);
 }
 
 .logo-sparkle {
-  color: var(--cr-logo-color);
-  font-size: 13.5px;
+  color: #ffffff;
+  font-size: 15px;
   line-height: 1;
-  transition: color 0.2s ease;
 }
 
 .logo-text {

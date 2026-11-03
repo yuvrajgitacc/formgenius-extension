@@ -454,10 +454,10 @@
     const models = [
       dynamicModel,
       'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant',
       'llama3-70b-8192',
       'llama3-8b-8192',
       'mixtral-8x7b-32768',
+      'llama-3.1-8b-instant',
       'gemma2-9b-it'
     ].filter((v, i, a) => v && a.indexOf(v) === i);
 
@@ -653,33 +653,114 @@
     return false;
   }
 
-    function isAlreadyFilled(container) {
+  function isAlreadyFilled(container) {
     if (!container) return false;
 
-    // 1. Radio button checked
+    // Check Google Forms radiogroup aria-activedescendant
+    const radiogroup = container.querySelector('[role="radiogroup"]');
+    if (radiogroup && radiogroup.getAttribute('aria-activedescendant')) {
+      return true;
+    }
+
+    // Check radios: aria-checked="true" or checked attribute
     const checkedRadio = container.querySelector(
-      '[role="radio"][aria-checked="true"], [role="radio"].N2x2Cc, [role="radio"].isChecked, input[type="radio"]:checked, [data-value][aria-checked="true"], [aria-checked="true"]'
+      '[role="radio"][aria-checked="true"], [role="radio"].isChecked, [role="radio"].N2x2Cc, input[type="radio"]:checked'
     );
     if (checkedRadio) return true;
 
-    // 2. Checkbox checked
+    // Check checkboxes: aria-checked="true" or checked attribute
     const checkedBox = container.querySelector(
-      '[role="checkbox"][aria-checked="true"], [role="checkbox"].N2x2Cc, [role="checkbox"].isChecked, input[type="checkbox"]:checked'
+      '[role="checkbox"][aria-checked="true"], [role="checkbox"].isChecked, [role="checkbox"].N2x2Cc, input[type="checkbox"]:checked'
     );
     if (checkedBox) return true;
 
-    // 3. Dropdown selected
+    // Check dropdowns: aria-selected="true" with valid selection
     const selectedOption = container.querySelector(
-      '[role="option"][aria-selected="true"], .quantumWizMenuPaperselectOption[aria-selected="true"], select:not([value=""]) option:checked:not([value=""])'
+      '[role="option"][aria-selected="true"], .quantumWizMenuPaperselectOption[aria-selected="true"], select option:checked'
     );
-    if (selectedOption && (selectedOption.textContent || '').trim() !== 'Choose') return true;
+    if (selectedOption) {
+      const txt = (selectedOption.textContent || selectedOption.value || '').trim();
+      if (txt && txt !== 'Choose' && txt !== '') return true;
+    }
 
-    // 4. Text / number / email / textarea inputs with non-empty content
+    // Check text/textarea inputs
     const inputs = container.querySelectorAll(
       'input.whsOnd, input[type="text"], input[type="email"], input[type="number"], textarea.KHxj8b, textarea'
     );
     for (const inp of inputs) {
       if (inp.value && inp.value.trim().length > 0) return true;
+    }
+
+    return false;
+  }
+
+  function getGoogleOptionText(el) {
+    if (!el) return '';
+    const attrVal = (el.getAttribute('data-value') || el.getAttribute('aria-label') || '').trim();
+    if (attrVal && attrVal !== '__other_option__') {
+      return attrVal;
+    }
+
+    const container = el.parentElement ? (
+      el.parentElement.closest('.docssharedWizToggleLabeledContainer') ||
+      el.parentElement.closest('[role="listitem"]') ||
+      el.parentElement.closest('.nWQGrd') ||
+      el.parentElement.closest('.bz0duf') ||
+      el.parentElement
+    ) : null;
+
+    if (container) {
+      const labelEl = container.querySelector('.aDTYNe, .vd3tt, .nWQGrd, .docssharedWizToggleLabeledLabelText, .bz0duf, .N5QAE');
+      if (labelEl && labelEl.textContent) {
+        const txt = labelEl.textContent.trim();
+        if (txt) return txt;
+      }
+      const rawTxt = container.textContent.trim();
+      if (rawTxt) return rawTxt;
+    }
+
+    return attrVal || '';
+  }
+
+  function isOptionMatch(optionText, targetAnswer, optionIndex, totalOptions) {
+    if (!targetAnswer) return false;
+    const optRaw = String(optionText || '').trim();
+    const tgtRaw = String(targetAnswer || '').trim();
+    if (!optRaw && !tgtRaw) return false;
+
+    const optLower = optRaw.toLowerCase();
+    const tgtLower = tgtRaw.toLowerCase();
+
+    // 1. Exact match (case-insensitive)
+    if (optLower && optLower === tgtLower) return true;
+
+    // 2. Strip leading option indicators like "A)", "(B)", "1.", "c - " from both
+    const stripPrefix = (s) => s.replace(/^(\(?[a-h1-9]\)?[\).\s:-]+|option\s+[a-h1-9][:\s.-]*)/i, '').trim();
+    const cleanOpt = stripPrefix(optLower);
+    const cleanTgt = stripPrefix(tgtLower);
+
+    if (cleanOpt && cleanTgt && cleanOpt === cleanTgt) return true;
+
+    // 3. Substring match (CRITICAL: both strings must be non-empty and at least 3 chars long to avoid false positives!)
+    if (cleanOpt.length >= 3 && cleanTgt.length >= 3) {
+      if (cleanOpt.includes(cleanTgt) || cleanTgt.includes(cleanOpt)) {
+        return true;
+      }
+    }
+
+    // 4. Letter-based matching: e.g. "A", "B", "C", "D" or "(A)", "Option A"
+    const letterMatch = tgtLower.match(/^(\(?[a-h]\)?|option\s+([a-h]))$/i);
+    if (letterMatch) {
+      const letter = (letterMatch[2] || letterMatch[1]).replace(/[\(\)]/g, '').toUpperCase();
+      const targetIdx = letter.charCodeAt(0) - 65;
+      if (optionIndex === targetIdx) return true;
+    }
+
+    // 5. Number-based matching: e.g. "1", "2", "3", "Option 1"
+    const numMatch = tgtLower.match(/^(\(?([1-9])\)?|option\s+([1-9]))$/i);
+    if (numMatch) {
+      const num = parseInt(numMatch[3] || numMatch[2], 10);
+      if (optionIndex === (num - 1)) return true;
     }
 
     return false;
@@ -734,25 +815,13 @@
         } else if (hasRadio) {
           type = 'multiple_choice';
           container.querySelectorAll('[role="radio"], input[type="radio"]').forEach(r => {
-            const p = r.closest('[data-value]') || r.closest('.docssharedWizToggleLabeledContainer') || r.parentElement;
-            const t = (
-              r.getAttribute('data-value') ||
-              r.getAttribute('aria-label') ||
-              p?.querySelector('.aDTYNe, .vd3tt, .nWQGrd, .docssharedWizToggleLabeledLabelText, .bz0duf')?.textContent ||
-              p?.textContent || ''
-            ).trim();
+            const t = getGoogleOptionText(r);
             if (t && !options.includes(t)) options.push(t);
           });
         } else if (hasCheckbox) {
           type = 'checkbox';
           container.querySelectorAll('[role="checkbox"], input[type="checkbox"]').forEach(cb => {
-            const p = cb.closest('[data-value]') || cb.closest('.docssharedWizToggleLabeledContainer') || cb.parentElement;
-            const t = (
-              cb.getAttribute('data-value') ||
-              cb.getAttribute('aria-label') ||
-              p?.querySelector('.aDTYNe, .vd3tt, .nWQGrd, .docssharedWizToggleLabeledLabelText')?.textContent ||
-              p?.textContent || ''
-            ).trim();
+            const t = getGoogleOptionText(cb);
             if (t && !options.includes(t)) options.push(t);
           });
         } else if (hasTextarea) {
@@ -816,38 +885,26 @@
   async function fillGFMCQ(container, answerText) {
     if (!container || isAlreadyFilled(container)) return 0;
     if (answerText === undefined || answerText === null) return 0;
-    const target = String(answerText).trim().toLowerCase();
-    if (!target) return 0;
 
-    const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+    const radios = Array.from(container.querySelectorAll('[role="radio"], input[type="radio"]'));
     if (radios.length === 0) return 0;
 
-    // 1. Exact match on label or data-value
-    for (const radio of radios) {
-      const parent = radio.closest('[data-value]') || radio.closest('.docssharedWizToggleLabeledContainer') || radio.parentElement;
-      const val = (radio.getAttribute('data-value') || '').trim().toLowerCase();
-      const lbl = (parent?.querySelector('.aDTYNe, .vd3tt, .nWQGrd, .docssharedWizToggleLabeledLabelText, .bz0duf')?.textContent || parent?.textContent || '').trim().toLowerCase();
+    let matchedRadio = null;
+    let matchedParent = null;
 
-      const cleanTarget = target.replace(/^\(?[a-d]\)?[\).\s:-]+/, '').trim();
-      const cleanLbl = lbl.replace(/^\(?[a-d]\)?[\).\s:-]+/, '').trim();
-
-      if (val === target || lbl === target || (cleanTarget && cleanLbl === cleanTarget) || (cleanTarget && (cleanLbl.includes(cleanTarget) || cleanTarget.includes(cleanLbl)))) {
-        await simulateGoogleClick(radio, parent);
-        return 1;
+    for (let i = 0; i < radios.length; i++) {
+      const radio = radios[i];
+      const optText = getGoogleOptionText(radio);
+      if (isOptionMatch(optText, answerText, i, radios.length)) {
+        matchedRadio = radio;
+        matchedParent = radio.parentElement ? (radio.parentElement.closest('.docssharedWizToggleLabeledContainer') || radio.parentElement) : radio;
+        break;
       }
     }
 
-    // 2. Letter match fallback (e.g. "B")
-    const letterMatch = target.match(/^[a-d]$/i) || target.match(/^option\s+([a-d])$/i);
-    if (letterMatch) {
-      const letter = (letterMatch[1] || letterMatch[0]).toUpperCase();
-      const idx = letter.charCodeAt(0) - 65;
-      if (radios[idx]) {
-        const radio = radios[idx];
-        const parent = radio.closest('[data-value]') || radio.parentElement;
-        await simulateGoogleClick(radio, parent);
-        return 1;
-      }
+    if (matchedRadio) {
+      await simulateGoogleClick(matchedRadio, matchedParent);
+      return 1;
     }
 
     return 0;
@@ -856,22 +913,19 @@
   async function fillGFCheckbox(container, answers) {
     if (!container || isAlreadyFilled(container)) return 0;
     if (!answers) return 0;
-    const ansList = (Array.isArray(answers) ? answers : [answers]).map(a => String(a).trim().toLowerCase());
-    const checkboxes = Array.from(container.querySelectorAll('[role="checkbox"]'));
+    const ansList = (Array.isArray(answers) ? answers : [answers]).map(a => String(a).trim()).filter(Boolean);
+    if (ansList.length === 0) return 0;
+
+    const checkboxes = Array.from(container.querySelectorAll('[role="checkbox"], input[type="checkbox"]'));
     let clicked = 0;
 
-    for (const cb of checkboxes) {
-      const parent = cb.closest('[data-value]') || cb.closest('.docssharedWizToggleLabeledContainer') || cb.parentElement;
-      const val = (cb.getAttribute('data-value') || '').trim().toLowerCase();
-      const lbl = (parent?.querySelector('.aDTYNe, .vd3tt, .nWQGrd, .docssharedWizToggleLabeledLabelText')?.textContent || parent?.textContent || '').trim().toLowerCase();
-      const cleanLbl = lbl.replace(/^\(?[a-d]\)?[\).\s:-]+/, '').trim();
+    for (let i = 0; i < checkboxes.length; i++) {
+      const cb = checkboxes[i];
+      const optText = getGoogleOptionText(cb);
+      const isMatch = ansList.some(target => isOptionMatch(optText, target, i, checkboxes.length));
 
-      const shouldCheck = ansList.some(target => {
-        const cleanTarget = target.replace(/^\(?[a-d]\)?[\).\s:-]+/, '').trim();
-        return val === target || lbl === target || (cleanTarget && cleanLbl === cleanTarget) || (cleanTarget && cleanLbl.includes(cleanTarget));
-      });
-
-      if (shouldCheck && cb.getAttribute('aria-checked') !== 'true') {
+      if (isMatch && cb.getAttribute('aria-checked') !== 'true' && !cb.checked) {
+        const parent = cb.parentElement ? (cb.parentElement.closest('.docssharedWizToggleLabeledContainer') || cb.parentElement) : cb;
         await simulateGoogleClick(cb, parent);
         clicked++;
       }
@@ -1108,10 +1162,11 @@
         const { type, answer: ans } = answer;
         if (type === 'multiple_choice') {
           if (q._radios) {
-            for (const r of q._radios) {
+            for (let rIdx = 0; rIdx < q._radios.length; rIdx++) {
+              const r = q._radios[rIdx];
               const lbl = document.querySelector(`label[for="${r.id}"]`) || r.closest('label') || r.parentElement;
               const txt = (lbl?.textContent || r.value || '').trim();
-              if (txt.toLowerCase() === ans.toLowerCase() || r.value?.toLowerCase() === ans.toLowerCase()) {
+              if (isOptionMatch(txt, ans, rIdx, q._radios.length)) {
                 r.click(); await sleep(80); filled++; break;
               }
             }
@@ -1139,20 +1194,15 @@
 
   function findBestOptionMatch(optionsMap, ans) {
     if (!optionsMap || optionsMap.length === 0) return null;
-    const a = String(ans || '').trim().toLowerCase();
+    if (ans === undefined || ans === null) return null;
 
-    for (const opt of optionsMap) {
-      if (opt.text.toLowerCase() === a) return opt;
-    }
-    for (const opt of optionsMap) {
-      if (opt.letter && (a === opt.letter.toLowerCase() || a === 'option ' + opt.letter.toLowerCase())) {
+    for (let i = 0; i < optionsMap.length; i++) {
+      const opt = optionsMap[i];
+      if (isOptionMatch(opt.text, ans, i, optionsMap.length)) {
         return opt;
       }
     }
-    for (const opt of optionsMap) {
-      if (opt.text.toLowerCase().includes(a) || a.includes(opt.text.toLowerCase())) return opt;
-    }
-    return optionsMap[0] || null;
+    return null;
   }
 
   async function clickOption(el) {
@@ -1192,44 +1242,80 @@
     const prompt = `You are an expert exam solver. Solve ALL the questions below accurately.
 
 RULES:
-1. "multiple_choice" -> exact text of correct option.
-2. "checkbox" -> JSON array of exact text of correct options.
+1. "multiple_choice" -> return the exact text of the correct option from the given options list. Do NOT default to the first option.
+2. "checkbox" -> return a JSON array of exact text of all correct options.
 3. "short_answer" -> concise 1-sentence answer.
 4. "paragraph" -> concise 2-sentence answer.
-5. "dropdown" -> exact text of correct option.
-6. Return ONLY a valid JSON array. No markdown fences.
+5. "dropdown" -> exact text of the correct option.
+6. Return a valid JSON object with an "answers" array containing your solutions.
 
 QUESTIONS:
 ${JSON.stringify(cleanQ, null, 2)}
 
-OUTPUT FORMAT (JSON array):
-[
-  {"batchIndex": 0, "type": "multiple_choice", "answer": "Exact Option Text"},
-  {"batchIndex": 1, "type": "checkbox", "answer": ["Option A"]}
-]`;
+OUTPUT FORMAT:
+{
+  "answers": [
+    {"batchIndex": 0, "type": "multiple_choice", "answer": "Exact Option Text"},
+    {"batchIndex": 1, "type": "checkbox", "answer": ["Option A"]}
+  ]
+}`;
 
     const rawText = await callUniversalAI({ apiKey, provider, prompt, isJson: true });
     const parsed = safeParseJSON(rawText);
 
-    if (!parsed || !Array.isArray(parsed)) {
+    if (!parsed) {
+      throw new Error('AI returned an unparseable response');
+    }
+
+    let answerArray = [];
+    if (Array.isArray(parsed)) {
+      answerArray = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.answers)) {
+        answerArray = parsed.answers;
+      } else if (Array.isArray(parsed.questions)) {
+        answerArray = parsed.questions;
+      } else if (Array.isArray(parsed.results)) {
+        answerArray = parsed.results;
+      } else if (Array.isArray(parsed.data)) {
+        answerArray = parsed.data;
+      } else if (Array.isArray(parsed.batch)) {
+        answerArray = parsed.batch;
+      } else {
+        const foundArr = Object.values(parsed).find(v => Array.isArray(v));
+        if (foundArr) {
+          answerArray = foundArr;
+        } else {
+          answerArray = Object.keys(parsed).map(k => ({
+            batchIndex: parseInt(k, 10),
+            answer: typeof parsed[k] === 'object' ? (parsed[k].answer || parsed[k].text) : parsed[k]
+          }));
+        }
+      }
+    }
+
+    if (!Array.isArray(answerArray) || answerArray.length === 0) {
       throw new Error('AI returned an unparseable response');
     }
 
     const result = [];
     for (let i = 0; i < batchQuestions.length; i++) {
       const q = batchQuestions[i];
-      const ansObj = parsed.find(a => a.originalIndex === q.index) ||
-                     parsed.find(a => a.batchIndex === i) ||
-                     parsed.find(a => a.index === q.index) ||
-                     parsed.find(a => a.index === i) ||
-                     parsed[i];
+      const ansObj = answerArray.find(a => a && (a.batchIndex === i || a.originalIndex === q.index || a.index === q.index || a.index === i)) ||
+                     answerArray[i];
 
-      if (ansObj && ansObj.answer !== undefined) {
-        result.push({
-          index: q.index,
-          type: q.type,
-          answer: ansObj.answer
-        });
+      if (ansObj) {
+        const val = (ansObj && typeof ansObj === 'object' && ansObj.answer !== undefined)
+          ? ansObj.answer
+          : (typeof ansObj === 'string' ? ansObj : null);
+
+        if (val !== null && val !== undefined) {
+          result.push({
+            index: q.index,
+            type: q.type,
+            answer: val
+          });
+        }
       }
     }
 
