@@ -8,7 +8,7 @@
 </head>
 <body>
   <div class="container">
-    <!-- Header -->
+    <!-- 1. Header -->
     <header class="header">
       <div class="logo">
         <div class="logo-icon-box">
@@ -19,17 +19,16 @@
           <span class="logo-tagline">AI Form Solver</span>
         </div>
       </div>
-      <div class="status-dot" id="statusDot" title="Status"></div>
+      <div class="status-dot" id="statusDot" title="Status: Ready"></div>
     </header>
 
-    <!-- Top Card: Status & Shortcut -->
-    <div class="status-card" id="statusBanner">
+    <!-- 2. Status Banner & Shortcut Card -->
+    <div class="status-card status-banner" id="statusBanner">
       <div class="status-title-row">
-        <span class="status-icon" style="display:none">⚠️</span>
         <span class="status-text" id="statusText">No Google Form active</span>
       </div>
       <div class="shortcut-row">
-        <span class="shortcut-label">Press on form:</span>
+        <span class="shortcut-label">Solve Form / MCQ:</span>
         <div class="shortcut-keys">
           <kbd>Alt</kbd>
           <span class="shortcut-plus">+</span>
@@ -38,35 +37,60 @@
           <kbd>S</kbd>
         </div>
       </div>
+      <div class="shortcut-row code-shortcut-row">
+        <span class="shortcut-label">Technical Code:</span>
+        <div class="shortcut-keys">
+          <kbd>Alt</kbd>
+          <span class="shortcut-plus">+</span>
+          <kbd>Shift</kbd>
+          <span class="shortcut-plus">+</span>
+          <kbd>C</kbd>
+        </div>
+      </div>
     </div>
 
-    <!-- Gemini API Key Section -->
+    <!-- 3. AI Key & Provider Section -->
     <div class="api-key-section">
       <div class="api-key-header">
-        <label class="label" id="apiKeyLabel" for="apiKey">Gemini API Key</label>
-        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="link-get-key" id="getKeyLink" rel="noreferrer">Get key ↗</a>
+        <div class="api-key-header-left">
+          <label class="label" id="apiKeyLabel" for="apiKey">Gemini API Key</label>
+          <select id="providerSelect" class="provider-select" title="Change AI Provider">
+            <option value="auto">Auto</option>
+            <option value="gemini">Gemini</option>
+            <option value="groq">Groq</option>
+            <option value="grok">Grok</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+        <a id="getKeyLink" class="link-get-key" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Get key ↗</a>
       </div>
       <div class="input-container">
         <input
           type="password"
           id="apiKey"
           class="input"
-          placeholder="••••••••••••••••••••••••••••"
+          placeholder="Paste API key here..."
           autocomplete="off"
           spellcheck="false"
         />
-        <button class="eye-btn" id="toggleKey" title="Show/Hide Key" aria-label="Toggle API Key visibility">👁</button>
+        <button class="eye-btn" id="toggleKey" title="Show/Hide Key" aria-label="Toggle Key Visibility">👁</button>
         <button class="btn-save" id="saveBtn">Save</button>
       </div>
     </div>
 
-    <!-- Full-Width Solve Form Action Button -->
-    <button class="btn-solve" id="solveBtn" disabled>
-      <span class="btn-icon">⚡</span>
-      <span>Solve Form Now</span>
-    </button>
+    <!-- 4. Action Buttons -->
+    <div class="action-buttons-row">
+      <button class="btn-action btn-solve-form" id="solveBtn" disabled title="Solve Form / MCQ (Alt+Shift+S)">
+        <span class="btn-icon">⚡</span>
+        <span>Solve Form Now</span>
+      </button>
+      <button class="btn-action btn-solve-code" id="solveCodeBtn" disabled title="Solve Technical Code in Editor (Alt+Shift+C)">
+        <span class="btn-icon">💻</span>
+        <span>Solve Code</span>
+      </button>
+    </div>
 
-    <!-- Statistics Section with Vertical Divider -->
+    <!-- 5. Statistics Section -->
     <div class="stats" id="stats">
       <div class="stat">
         <div class="stat-value" id="solvedCount">0</div>
@@ -79,7 +103,7 @@
       </div>
     </div>
 
-    <!-- Footer -->
+    <!-- 6. Footer -->
     <footer class="footer">
       <div class="footer-left">
         <span class="footer-gear">⚙</span>
